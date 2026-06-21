@@ -1,0 +1,10 @@
+{
+  "best_value_masked_val_mse": 0.3400024214552403,
+  "best_params": {
+    "latent": 128,
+    "lr": 0.0008258152449735038,
+    "weight_decay": 3.8987142900569434e-05,
+    "batch_size": 16,
+    "noise_std": 0.1
+  }
+}
