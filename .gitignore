@@ -1,9 +1,19 @@
-.venv/
-venv/
-env/
+# IDE
+.idea/
 
-# Python cache
+# Python
 __pycache__/
 *.pyc
 
+# Virtual environments
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# MacOS
 .DS_Store
+
+# Brain data
+*.npy
