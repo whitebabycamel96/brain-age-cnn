@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import numpy as np; d = np.load\\('data/test.npy'\\); print\\('Shape:', d.shape\\); print\\('dtype:', d.dtype\\); print\\('min/max:', d.min\\(\\), d.max\\(\\)\\)\")",
+      "Bash(python pixel_scatter.py)",
+      "Bash(python -c ' *)",
+      "Bash(python encoder_layers_viz.py)",
+      "Bash(python3 -c \"import numpy as np; d = np.load\\('/Users/zhanermou/Downloads/XAI/vbm_data_z60/vbm_z60.npy'\\); print\\('shape:', d.shape\\); print\\('dtype:', d.dtype\\); print\\('min:', d.min\\(\\), 'max:', d.max\\(\\)\\)\")",
+      "Bash(pip3 show *)",
+      "Bash(conda run *)",
+      "Bash(python3 -c \"import numpy as np; d = np.load\\('/Users/zhanermou/Downloads/XAI/vbm_data_z60/vbm_z60.npy'\\); print\\('shape:', d.shape\\)\")",
+      "Bash(/opt/homebrew/bin/python3 -c \"import numpy as np; d = np.load\\('/Users/zhanermou/Downloads/XAI/vbm_data_z60/vbm_z60.npy'\\); print\\('shape:', d.shape\\); print\\('dtype:', d.dtype\\); print\\('min:', d.min\\(\\), 'max:', d.max\\(\\)\\)\")"
+    ]
+  }
+}
