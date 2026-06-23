@@ -128,15 +128,18 @@ def make_objective(
 
     def objective(trial: optuna.Trial) -> float:
         # ── suggest hyperparameters ─────────────────────────────────
-        lambda_age  = trial.suggest_float("lambda_age",  1e-3, 0.1,  log=True)
-        lr          = trial.suggest_float("lr",          1e-5, 5e-4, log=True)
-        latent_dim  = trial.suggest_categorical("latent_dim",  [64, 128, 256])
-        batch_size  = trial.suggest_categorical("batch_size",  [16, 32])
+        lambda_age   = trial.suggest_float("lambda_age",   1e-4, 1.0,  log=True)
+        lr           = trial.suggest_float("lr",           1e-5, 5e-4, log=True)
+        latent_dim   = trial.suggest_categorical("latent_dim",   [64, 128, 256])
+        batch_size   = trial.suggest_categorical("batch_size",   [16, 32])
+        dropout      = trial.suggest_float("dropout",      0.0,  0.4,  step=0.1)
+        weight_decay = trial.suggest_float("weight_decay", 1e-5, 1e-3, log=True)
 
         logger.info(
             f"trial {trial.number:>3}  "
             f"lambda_age={lambda_age:.4f}  lr={lr:.2e}  "
-            f"latent_dim={latent_dim}  batch_size={batch_size}"
+            f"latent_dim={latent_dim}  batch_size={batch_size}  "
+            f"dropout={dropout:.1f}  wd={weight_decay:.2e}"
         )
 
         # ── data loaders (batch_size varies per trial) ───────────────
@@ -162,9 +165,14 @@ def make_objective(
         model = VBMAutoencoder(
             latent_dim=latent_dim,
             age_head=cfg.get("age_head", True),
+            dropout=dropout,
         ).to(device)
 
-        optimizer = optim.Adam(model.parameters(), lr=lr)
+        optimizer = optim.Adam(
+            model.parameters(),
+            lr=lr,
+            weight_decay=weight_decay,
+        )
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", factor=0.5, patience=5,
         )
