@@ -36,3 +36,11 @@ chmod +x sync_to_pvc.sh
 kubectl delete pod vbm-train
 kubectl apply -f train_job_github.yaml
 kubectl logs -f vbm-train -c trainer
+
+
+add clone repository as an optional for train yaml job. 
+
+
+kubectl delete pod vbm-train
+kubectl apply -f hparam_job.yaml
+kubectl logs -f vbm-hparam -c searcher

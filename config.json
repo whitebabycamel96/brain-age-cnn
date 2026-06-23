@@ -10,6 +10,8 @@
   "epochs":          100,
   "latent_dim":      128,
   "age_head":        true,
+  "dropout":         0.1,
+  "weight_decay":    1e-4,
   "num_workers":     4,
   "pad_top":         3,
   "pad_bottom":      4,

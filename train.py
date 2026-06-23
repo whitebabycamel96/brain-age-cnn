@@ -59,6 +59,8 @@ def load_config(path: str = "config.json") -> dict:
     cfg.setdefault("num_workers",    4)
     cfg.setdefault("seed",           42)
     cfg.setdefault("test_size",      0.2)
+    cfg.setdefault("dropout",        0.1)
+    cfg.setdefault("weight_decay",   1e-4)
     # CropPad defaults match your preprocessing class defaults
     cfg.setdefault("pad_top",        3)
     cfg.setdefault("pad_bottom",     4)
@@ -333,11 +335,11 @@ def main():
 
         train_ds = VBMAgeDataset(
             raw_images, cfg["tsv_path"],
-            indices=train_idx,
+            indices=train_idx, normalizer=normalizer,
         )
         test_ds = VBMAgeDataset(
             raw_images, cfg["tsv_path"],
-            indices=test_idx,
+            indices=test_idx, normalizer=normalizer,
         )
 
         train_loader = DataLoader(
@@ -359,17 +361,26 @@ def main():
         model = VBMAutoencoder(
             latent_dim=cfg["latent_dim"],
             age_head=cfg["age_head"],
+            dropout=cfg["dropout"],
         ).to(device)
 
         total_params     = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         logger.info(f"parameters: {total_params:,} total, {trainable_params:,} trainable")
-        logger.debug(f"latent_dim={cfg['latent_dim']}, age_head={cfg['age_head']}, lambda_age={cfg['lambda_age']}")
+        logger.debug(
+            f"latent_dim={cfg['latent_dim']}, age_head={cfg['age_head']}, "
+            f"lambda_age={cfg['lambda_age']}, dropout={cfg['dropout']}, "
+            f"weight_decay={cfg['weight_decay']}"
+        )
 
         # ── optimiser + scheduler ───────────────────────────────────
-        optimizer = optim.Adam(model.parameters(), lr=cfg["lr"])
+        optimizer = optim.Adam(
+            model.parameters(),
+            lr=cfg["lr"],
+            weight_decay=cfg["weight_decay"],
+        )
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", factor=0.5, patience=10
+            optimizer, mode="min", factor=0.5, patience=10,
         )
 
         # ── checkpoint dir ──────────────────────────────────────────

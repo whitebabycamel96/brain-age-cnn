@@ -7,13 +7,13 @@ for VBM gray matter slices (128x128, single channel).
 Architecture
 ------------
 Encoder:
-  Conv2d(1,  16,  k=3, s=1, p=1) + BN + ReLU   -> 16 x 128 x 128
-  Conv2d(16, 32,  k=3, s=2, p=1) + BN + ReLU   -> 32 x  64 x  64   [downsample 1]
-  Conv2d(32, 32,  k=3, s=1, p=1) + BN + ReLU   -> 32 x  64 x  64
-  Conv2d(32, 64,  k=3, s=2, p=1) + BN + ReLU   -> 64 x  32 x  32   [downsample 2]
-  Conv2d(64, 64,  k=3, s=1, p=1) + BN + ReLU   -> 64 x  32 x  32
-  Conv2d(64, 128, k=3, s=2, p=1) + BN + ReLU   -> 128 x 16 x  16   [downsample 3]
-  Flatten -> Linear(128*16*16, latent_dim)       -> z in R^latent_dim
+  Conv2d(1,  16,  k=3, s=1, p=1) + BN + ReLU + Dropout2d -> 16 x 128 x 128
+  Conv2d(16, 32,  k=3, s=2, p=1) + BN + ReLU + Dropout2d -> 32 x  64 x  64   [downsample 1]
+  Conv2d(32, 32,  k=3, s=1, p=1) + BN + ReLU + Dropout2d -> 32 x  64 x  64
+  Conv2d(32, 64,  k=3, s=2, p=1) + BN + ReLU + Dropout2d -> 64 x  32 x  32   [downsample 2]
+  Conv2d(64, 64,  k=3, s=1, p=1) + BN + ReLU + Dropout2d -> 64 x  32 x  32
+  Conv2d(64, 128, k=3, s=2, p=1) + BN + ReLU + Dropout2d -> 128 x 16 x  16   [downsample 3]
+  Flatten -> Linear(128*16*16, latent_dim)                 -> z in R^latent_dim
 
 Decoder (mirror):
   Linear(latent_dim, 128*16*16) -> reshape            -> 128 x 16 x 16
@@ -46,12 +46,14 @@ class Encoder(nn.Module):
     """
     Maps a single-channel 128x128 VBM slice to a latent vector z.
 
-    Each conv block: Conv2d -> BatchNorm2d -> ReLU.
-    Downsampling via stride-2 convolutions (not pooling),
-    so the downsampling kernel is also learned.
+    Each conv block: Conv2d -> BatchNorm2d -> ReLU -> Dropout2d.
+    Dropout2d zeros entire feature maps (channels) randomly during
+    training -- better suited to conv layers than per-neuron dropout.
+    Dropout only in encoder, not decoder (decoder dropout hurts recon).
+    Downsampling via stride-2 convolutions (not pooling).
     """
 
-    def __init__(self, latent_dim: int = 128):
+    def __init__(self, latent_dim: int = 128, dropout: float = 0.1):
         super().__init__()
         self.latent_dim = latent_dim
 
@@ -61,31 +63,37 @@ class Encoder(nn.Module):
             nn.Conv2d(1,  16,  kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(16),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(p=dropout),
 
             # downsample 1: 128x128 -> 64x64, 16 -> 32 channels
             nn.Conv2d(16, 32,  kernel_size=3, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(p=dropout),
 
             # block 2: refine at 64x64
             nn.Conv2d(32, 32,  kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(p=dropout),
 
             # downsample 2: 64x64 -> 32x32, 32 -> 64 channels
             nn.Conv2d(32, 64,  kernel_size=3, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(p=dropout),
 
             # block 3: refine at 32x32
             nn.Conv2d(64, 64,  kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(p=dropout),
 
             # downsample 3: 32x32 -> 16x16, 64 -> 128 channels
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(p=dropout),
         )
 
         # --- bottleneck projection ---
@@ -222,12 +230,12 @@ class VBMAutoencoder(nn.Module):
         L_total = MSE(x_hat, x) + lambda_age * MSE(age_hat, age)
     """
 
-    def __init__(self, latent_dim: int = 128, age_head: bool = True):
+    def __init__(self, latent_dim: int = 128, age_head: bool = True, dropout: float = 0.1):
         super().__init__()
         self.latent_dim = latent_dim
         self.age_head   = age_head
 
-        self.encoder   = Encoder(latent_dim)
+        self.encoder   = Encoder(latent_dim, dropout=dropout)
         self.decoder   = Decoder(latent_dim)
         self.regressor = AgeRegressionHead(latent_dim) if age_head else None
 
@@ -285,7 +293,7 @@ def compute_loss(
 # ------------------------------------------------------------------ #
 
 if __name__ == "__main__":
-    model = VBMAutoencoder(latent_dim=128, age_head=True)
+    model = VBMAutoencoder(latent_dim=128, age_head=True, dropout=0.1)
     x     = torch.randn(4, 1, 128, 128)
     age   = torch.tensor([25.0, 34.0, 52.0, 61.0])
 
