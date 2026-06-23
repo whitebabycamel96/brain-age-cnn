@@ -28,3 +28,11 @@ chmod +x sync_to_pvc.sh
   checkpoints/
     autoencoder_age/    ← written by training job
   hparam_search/        ← written by hparam job
+
+
+ kubectl apply -f train_job_github.yaml
+
+
+kubectl delete pod vbm-train
+kubectl apply -f train_job_github.yaml
+kubectl logs -f vbm-train -c trainer

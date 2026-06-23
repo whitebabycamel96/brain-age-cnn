@@ -35,17 +35,15 @@ spec:
         echo "repo exists — pulling latest from $BRANCH ..."
         cd $TMP_DIR && git fetch origin && git checkout $BRANCH && git pull origin $BRANCH
       else
-        echo "cloning branch $BRANCH into $TMP_DIR ..."
+        echo "cloning branch $BRANCH ..."
         git clone --branch $BRANCH $REPO_URL $TMP_DIR
       fi
 
       echo "code at commit: $(cd $TMP_DIR && git log --oneline -1)"
 
-      echo "copying code files to /data ..."
-      cp $TMP_DIR/*.py /data/
-      cp $TMP_DIR/config.json /data/
-      echo "code files in /data:"
-      ls /data/*.py /data/config.json
+      echo "copying repo contents to /data ..."
+      cp -r $TMP_DIR/. /data/
+      echo "done"
 
     volumeMounts:
     - name: vbm-storage
@@ -59,7 +57,9 @@ spec:
     - bash
     - -c
     - |
-      pip install -r requirements.txt --quiet &&
+      export PIP_TARGET=/data/pip_packages &&
+      export PYTHONPATH=/data/pip_packages:$PYTHONPATH &&
+      pip install -r /data/requirements.txt --quiet --target=$PIP_TARGET --upgrade-strategy only-if-needed &&
       cd /data &&
       python train.py --config config.json
 
