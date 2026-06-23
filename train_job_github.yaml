@@ -1,3 +1,16 @@
+# train_job_github.yaml
+#
+# Training job that pulls the latest code from GitHub on every pod
+# startup via an init container. Repo is PUBLIC so no SSH key needed.
+#
+# Workflow:
+#   1. git push  (local)
+#   2. kubectl apply -f train_job_github.yaml
+#   3. Init container clones/pulls latest code automatically
+#   4. Training runs, checkpoints saved to PVC
+#
+# Update REPO_URL below to your actual repo before submitting.
+
 apiVersion: v1
 kind: Pod
 metadata:
@@ -5,6 +18,8 @@ metadata:
   namespace: hdsi-schwartzman
 spec:
   restartPolicy: Never
+
+  # ── init container: pull latest code from GitHub ─────────────────
   initContainers:
   - name: git-sync
     image: alpine/git
@@ -14,22 +29,29 @@ spec:
     - |
       REPO_URL="https://github.com/whitebabycamel96/brain-age-cnn.git"
       BRANCH="autoenocder_age"
-      CODE_DIR="/data"
+      TMP_DIR="/tmp/repo"
 
-      if [ -d "$CODE_DIR/.git" ]; then
+      if [ -d "$TMP_DIR/.git" ]; then
         echo "repo exists — pulling latest from $BRANCH ..."
-        cd $CODE_DIR && git fetch origin && git checkout $BRANCH && git pull origin $BRANCH
+        cd $TMP_DIR && git fetch origin && git checkout $BRANCH && git pull origin $BRANCH
       else
-        echo "cloning branch $BRANCH into /data ..."
-        git clone --branch $BRANCH $REPO_URL $CODE_DIR
+        echo "cloning branch $BRANCH into $TMP_DIR ..."
+        git clone --branch $BRANCH $REPO_URL $TMP_DIR
       fi
 
-      echo "code at commit: $(cd $CODE_DIR && git log --oneline -1)"
+      echo "code at commit: $(cd $TMP_DIR && git log --oneline -1)"
+
+      echo "copying code files to /data ..."
+      cp $TMP_DIR/*.py /data/
+      cp $TMP_DIR/config.json /data/
+      echo "code files in /data:"
+      ls /data/*.py /data/config.json
 
     volumeMounts:
     - name: vbm-storage
       mountPath: /data
 
+  # ── main training container ──────────────────────────────────────
   containers:
   - name: trainer
     image: pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime
@@ -37,9 +59,10 @@ spec:
     - bash
     - -c
     - |
-      pip install scikit-learn optuna --quiet &&
+      pip install -r requirements.txt --quiet &&
       cd /data &&
       python train.py --config config.json
+
     resources:
       requests:
         memory: "16Gi"
@@ -49,9 +72,11 @@ spec:
         memory: "32Gi"
         cpu: "8"
         nvidia.com/gpu: "1"
+
     volumeMounts:
     - name: vbm-storage
       mountPath: /data
+
     env:
     - name: PYTHONUNBUFFERED
       value: "1"
