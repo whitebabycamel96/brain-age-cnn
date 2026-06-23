@@ -333,13 +333,17 @@ def main():
         normalizer.fit(raw_images[train_idx])
         logger.debug(f"normalizer mu={normalizer.mu:.4f}, sd={normalizer.sd:.4f}")
 
+        # apply normalization before passing to dataset
+        norm_images = np.stack([normalizer.transform(img) for img in raw_images])
+        logger.info(f"images normalized: mu={normalizer.mu:.4f}, sd={normalizer.sd:.4f}")
+
         train_ds = VBMAgeDataset(
-            raw_images, cfg["tsv_path"],
-            indices=train_idx, normalizer=normalizer,
+            norm_images, cfg["tsv_path"],
+            indices=train_idx,
         )
         test_ds = VBMAgeDataset(
-            raw_images, cfg["tsv_path"],
-            indices=test_idx, normalizer=normalizer,
+            norm_images, cfg["tsv_path"],
+            indices=test_idx,
         )
 
         train_loader = DataLoader(

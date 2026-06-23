@@ -44,3 +44,10 @@ add clone repository as an optional for train yaml job.
 kubectl delete pod vbm-train
 kubectl apply -f hparam_job.yaml
 kubectl logs -f vbm-hparam -c searcher
+
+
+kubectl delete pod vbm-hparam --ignore-not-found=true
+kubectl apply -f hparam_job.yaml
+kubectl logs -f vbm-hparam -c searcher
+
+Make sure that the best 

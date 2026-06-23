@@ -81,10 +81,9 @@ def setup_logging(log_dir: str) -> logging.Logger:
 
 def prepare_data(cfg: dict) -> tuple:
     """
-    Load, crop, normalize, and split data once.
-    Returns (train_images, test_images, train_ages, test_ages,
-             normalizer, train_idx, test_idx, raw_images)
-    so each trial can build its own DataLoader with a different batch_size.
+    Load, crop, normalize and split data once.
+    Normalization is fitted on train set only, applied to all images.
+    Returns normalized images so VBMAgeDataset receives ready-to-use arrays.
     """
     crop = CropPad(
         pad_top=cfg["pad_top"],     pad_bottom=cfg["pad_bottom"],
@@ -101,10 +100,12 @@ def prepare_data(cfg: dict) -> tuple:
         idx, test_size=cfg["test_size"], random_state=cfg["seed"],
     )
 
+    # fit on train only, apply to all — same as train.py
     normalizer = GlobalZNormalizer()
     normalizer.fit(raw_images[train_idx])
+    norm_images = np.stack([normalizer.transform(img) for img in raw_images])
 
-    return raw_images, normalizer, train_idx, test_idx
+    return norm_images, train_idx, test_idx
 
 
 # ------------------------------------------------------------------ #
@@ -113,8 +114,7 @@ def prepare_data(cfg: dict) -> tuple:
 
 def make_objective(
     cfg:        dict,
-    raw_images: np.ndarray,
-    normalizer: GlobalZNormalizer,
+    norm_images: np.ndarray,
     train_idx:  np.ndarray,
     test_idx:   np.ndarray,
     device:     torch.device,
@@ -143,13 +143,14 @@ def make_objective(
         )
 
         # ── data loaders (batch_size varies per trial) ───────────────
+        # norm_images already normalized — pass directly, no normalizer arg
         train_ds = VBMAgeDataset(
-            raw_images, cfg["tsv_path"],
-            indices=train_idx, normalizer=normalizer,
+            norm_images, cfg["tsv_path"],
+            indices=train_idx,
         )
         test_ds = VBMAgeDataset(
-            raw_images, cfg["tsv_path"],
-            indices=test_idx, normalizer=normalizer,
+            norm_images, cfg["tsv_path"],
+            indices=test_idx,
         )
         train_loader = DataLoader(
             train_ds, batch_size=batch_size,
@@ -258,8 +259,8 @@ def main():
 
     # ── data — loaded once, shared across all trials ─────────────────
     logger.info("preparing data (once for all trials) ...")
-    raw_images, normalizer, train_idx, test_idx = prepare_data(cfg)
-    logger.info(f"images: {raw_images.shape}  train={len(train_idx)}  test={len(test_idx)}")
+    norm_images, train_idx, test_idx = prepare_data(cfg)
+    logger.info(f"images: {norm_images.shape}  train={len(train_idx)}  test={len(test_idx)}")
 
     # ── Optuna study ─────────────────────────────────────────────────
     # SQLite storage means trials survive crashes and you can resume:
@@ -271,19 +272,18 @@ def main():
         study_name=args.study_name,
         storage=storage,
         direction="minimize",
-        sampler=TPESampler(seed=cfg["seed"]),   # intelligent Bayesian-style search
+        sampler=TPESampler(seed=cfg["seed"]),
         pruner=MedianPruner(
-            n_startup_trials=5,    # don't prune until 5 trials complete
-            n_warmup_steps=5,      # don't prune before epoch 5
+            n_startup_trials=5,
+            n_warmup_steps=5,
         ),
-        load_if_exists=True,       # resume an existing study if db already exists
+        load_if_exists=True,
     )
 
-    # suppress Optuna's own verbose logging to keep console clean
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
     objective = make_objective(
-        cfg, raw_images, normalizer, train_idx, test_idx,
+        cfg, norm_images, train_idx, test_idx,
         device, args.epochs_per_trial, logger,
     )
 
