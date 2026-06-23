@@ -33,20 +33,28 @@ matplotlib.use("Agg")
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 def crop_pad_128(sl):
-    """(N,121,145) -> (N,128,128): centre-crop width 145->128, zero-pad height 121->128."""
-    # cropped = sl[:, :, 8:136]                                        # 145 -> 128 (centre)
-    return np.pad(sl, ((0, 0), (3, 4), (3, 4)),
-                  mode="constant", constant_values=0)                # 121 -> 128
+    """(N,121,145) -> (N,128,128): centre-crop width 145->128, zero-pad height 121->128.
 
-# def build_brain_mask(X_raw_train, frac=0.05):
-#     """In-brain mask from the TRAIN mean image: voxels above frac * max.
-# 
-#     Built from training data only so it carries no information from val/test.
-#     """
-#     m = X_raw_train.mean(axis=0)
-#     return m > (frac * m.max())  # (128,128) bool
+    Width:  145 - 128 = 17 columns to remove; take 8 from left, 9 from right
+            -> sl[:, :, 8:136]
+    Height: 121 -> 128 requires 7 rows of padding; add 3 top, 4 bottom
+            -> np.pad(..., (3,4)) on axis 1
+    The previous version padded width instead of cropping it, producing
+    128x152 inputs and a flat encoder size of 10240 instead of 8192.
+    """
+    cropped = sl[:, :, 8:136]                                        # 145 -> 128 (centre crop)
+    return np.pad(cropped, ((0, 0), (3, 4), (0, 0)),
+                  mode="constant", constant_values=0)                # 121 -> 128, width unchanged
 
-# Input normalization (each mode pairs with a matching decoder output head)
+def build_brain_mask(X_raw_train, frac=0.05):
+    """In-brain mask from the TRAIN mean image: voxels above frac * max.
+
+    Built from training data only so it carries no information from val/test.
+    """
+    m = X_raw_train.mean(axis=0)
+    return m > (frac * m.max())  # (128,128) bool
+
+# --- input normalization (each mode pairs with a matching decoder output head) ---
 OUT_ACT = {"global_z": None, "per_image_z": None,
            "global_minmax": "sigmoid", "scale_only": "softplus"}
 
@@ -533,19 +541,49 @@ def _topvar_cols(F, k):
     """Highest-variance feature indices (age-agnostic selection)."""
     return list(np.argsort(F.var(axis=0))[::-1][:k])
 
+def _ols_simple(a, f):
+    """OLS for  f = b0 + b1*a + e  (n >= 3, ptp(a) > 0).
+    Returns (b0, b1, se_b1, t_b1, p_b1, r) — all floats.
+
+    Derivation (bivariate OLS closed form):
+        b1  = Cov(a,f) / Var(a)
+        b0  = mean(f) - b1*mean(a)
+        RSS = sum((f - b0 - b1*a)^2)
+        s2  = RSS / (n-2)                  # unbiased error variance
+        SE  = sqrt(s2 / sum((a-mean(a))^2))
+        t   = b1 / SE                      ~ t(n-2) under H0: b1=0
+        p   = 2 * P(T_{n-2} >= |t|)       two-tailed
+    """
+    from scipy import stats as _stats
+    n = len(a)
+    a_c = a - a.mean()
+    SXX = float((a_c ** 2).sum())
+    b1  = float((a_c * (f - f.mean())).sum() / SXX)
+    b0  = float(f.mean() - b1 * a.mean())
+    res = f - (b0 + b1 * a)
+    s2  = float((res ** 2).sum()) / (n - 2)
+    se  = float(np.sqrt(s2 / SXX))
+    t   = float(b1 / se) if se > 0 else float("nan")
+    p   = float(2.0 * _stats.t.sf(abs(t), df=n - 2)) if np.isfinite(t) else float("nan")
+    r   = float(np.corrcoef(a, f)[0, 1])
+    return b0, b1, se, t, p, r
+
 def _scatter_vs_age(ax, age, feat, label, ylab):
+    """Scatter of feat vs age with OLS fit line.
+    Title reports β₁ (slope), SE, t, p, and Pearson r."""
     m = np.isfinite(age) & np.isfinite(feat)
     a, f = age[m], feat[m]
     ax.scatter(a, f, s=15, alpha=0.7, color="#1C7293", edgecolors="none")
-    r = float("nan")
+    b1, se, t, p, r = float("nan"), float("nan"), float("nan"), float("nan"), float("nan")
     if a.size >= 3 and np.ptp(a) > 0:
-        b1, b0 = np.polyfit(a, f, 1)
+        b0, b1, se, t, p, r = _ols_simple(a, f)
         xs = np.array([a.min(), a.max()])
         ax.plot(xs, b0 + b1 * xs, color="#D98324", lw=1.8)
-        r = float(np.corrcoef(a, f)[0, 1])
-    ax.set_title(f"{label}    r = {r:+.2f}", fontsize=10)
+    # compact stats line under the feature label
+    stats_str = (f"β={b1:+.3f}  SE={se:.3f}  t={t:+.2f}  p={p:.2e}")
+    ax.set_title(f"{label}\n{stats_str}", fontsize=8)
     ax.set_xlabel("age"); ax.set_ylabel(ylab)
-    return r
+    return b1, se, t, p, r
 
 def latent_variance_order(Z):
     """Latent dimensions ordered by variance across subjects (highest first)."""
@@ -689,7 +727,6 @@ def plot_all_layer_features_vs_age(model, Xte_np, age, device, out_dir, ncols=4,
     Each PDF contains scatterplots of ALL channels versus age,
     ordered by channel variance across test subjects.
     """
-
     if age is None:
         print("layer feature-age PDFs skipped: no age column")
         return
@@ -861,8 +898,8 @@ def main():
     ap.add_argument("--out",         default="ae_run/ae_z60")
     ap.add_argument("--epochs",      type=int,   default=80)
     ap.add_argument("--batch-size",  type=int,   default=16)
-    ap.add_argument("--lr",          type=float, default=8.3e-4)
-    ap.add_argument("--weight-decay",type=float, default=3.9e-5)
+    ap.add_argument("--lr",          type=float, default=0.0005525670405709142)
+    ap.add_argument("--weight-decay",type=float, default=2.2256525266884623e-05)
     ap.add_argument("--latent",      type=int,   default=128)
     ap.add_argument("--noise-std",   type=float, default=0.1)
     ap.add_argument("--test-size",   type=float, default=0.15,
@@ -965,6 +1002,31 @@ def main():
     plot_latent_diagnostics(Z_te, args.out, color=age,
                             color_label="age" if age is not None else None)
     print(f"in-brain pixel scatter: r {pear:.4f}  R² {r2:.4f}")
+
+    # --- save artefacts needed by latent_age_ols.py -------------------
+    # (a) latent codes for ALL subjects (train+val+test), row-aligned with TSV
+    print("encoding all subjects for OLS analysis …")
+    Z_all = encode_all(model, Xn, device)                             # (N, latent)
+    np.save(os.path.join(args.out, "latent_all.npy"), Z_all)
+
+    # (b) per-layer mean-channel activations for ALL subjects
+    #     list of 4 arrays: [(N,16),(N,32),(N,64),(N,128)]
+    layer_feats_all = encode_layer_features(model, Xn, device)
+    np.savez(os.path.join(args.out, "layer_features_all.npz"),
+             **{f"layer{i+1}": F for i, F in enumerate(layer_feats_all)})
+
+    # (c) age vector row-aligned with TSV (NaN where missing)
+    ages_all = (meta["age"].values.astype(float)
+                if "age" in meta.columns
+                else np.full(len(meta), np.nan))
+    np.save(os.path.join(args.out, "ages_all.npy"), ages_all)
+
+    # (d) split indices so OLS script can reproduce train / test exactly
+    np.savez(os.path.join(args.out, "split_indices.npz"),
+             tr=tr, va=va, te=te)
+    print(f"saved latent_all.npy ({Z_all.shape}), "
+          f"layer_features_all.npz, ages_all.npy, split_indices.npz")
+    # ------------------------------------------------------------------
 
     # 6b. normalization comparison: density-space recon (above) + latent->age decoding
     age_dec = evaluate_age_decoding(Z_te, age)
