@@ -1,0 +1,6 @@
+stage,n_features,n_significant,prop_sig,median_abs_t,max_abs_t
+layer1,16,15,0.9375,7.7115,9.6497
+layer2,32,28,0.875,7.5825,10.0953
+layer3,64,60,0.9375,6.9537,10.5663
+layer4,128,113,0.8828,5.1477,7.8797
+latent,128,34,0.2656,1.3111,4.9033

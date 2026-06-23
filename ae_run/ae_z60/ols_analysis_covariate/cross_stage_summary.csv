@@ -1,0 +1,6 @@
+stage,n_features,n_significant,prop_sig,median_abs_t,max_abs_t,df_resid
+layer1,16,13,0.8125,4.0232,4.6172,59
+layer2,32,24,0.75,3.9894,4.96,59
+layer3,64,51,0.7969,3.2077,6.6952,59
+layer4,128,36,0.2812,1.8022,4.0088,59
+latent,128,0,0.0,0.6369,2.63,59
