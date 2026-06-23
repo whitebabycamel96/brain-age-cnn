@@ -1,0 +1,53 @@
+# transfer_pod.yaml
+#
+# A minimal CPU pod whose only job is to mount the PVC
+# so you can kubectl cp your local files onto it.
+#
+# Workflow:
+#   1. kubectl apply -f transfer_pod.yaml -n hdsi-schwartzman
+#   2. kubectl wait --for=condition=Ready pod/vbm-transfer -n hdsi-schwartzman
+#   3. Copy data and code (see commands below)
+#   4. kubectl delete pod vbm-transfer -n hdsi-schwartzman
+#
+# Copy commands (run from your local project directory):
+#
+#   # data
+#   kubectl cp vbm_data_sliced/ vbm-transfer:/data/vbm_data_sliced/ -n hdsi-schwartzman
+#   kubectl cp participants_study_3.tsv vbm-transfer:/data/ -n hdsi-schwartzman
+#
+#   # code
+#   kubectl cp model.py          vbm-transfer:/data/code/ -n hdsi-schwartzman
+#   kubectl cp train.py          vbm-transfer:/data/code/ -n hdsi-schwartzman
+#   kubectl cp hparam_search.py  vbm-transfer:/data/code/ -n hdsi-schwartzman
+#   kubectl cp VBMAgeDataset.py  vbm-transfer:/data/code/ -n hdsi-schwartzman
+#   kubectl cp preprocessing.py  vbm-transfer:/data/code/ -n hdsi-schwartzman
+#   kubectl cp config.json       vbm-transfer:/data/code/ -n hdsi-schwartzman
+#
+# Verify layout:
+#   kubectl exec vbm-transfer -n hdsi-schwartzman -- find /data -type f
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vbm-transfer
+  namespace: hdsi-schwartzman
+spec:
+  restartPolicy: Never
+  containers:
+  - name: transfer
+    image: busybox
+    command: ["sh", "-c", "mkdir -p /data/vbm_data_sliced /data/code /data/checkpoints/autoencoder_age /data/hparam_search && sleep 3600"]
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "250m"
+      limits:
+        memory: "1Gi"
+        cpu: "500m"
+    volumeMounts:
+    - name: vbm-storage
+      mountPath: /data
+  volumes:
+  - name: vbm-storage
+    persistentVolumeClaim:
+      claimName: vbm-ae-pvc

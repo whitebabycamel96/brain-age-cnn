@@ -1,11 +1,43 @@
+# pvc.yaml
+#
+# Persistent Volume Claim for the VBM autoencoder project.
+# Lives in the hdsi-schwartzman namespace on Nautilus.
+#
+# Create with:
+#   kubectl apply -f pvc.yaml -n hdsi-schwartzman
+#
+# Check status:
+#   kubectl get pvc vbm-ae-pvc -n hdsi-schwartzman
+#
+# Storage layout once data is copied in:
+#   /data/
+#     vbm_data_sliced/
+#       vbm_z60.npy
+#     participants_study_3.tsv
+#     code/
+#       model.py
+#       train.py
+#       hparam_search.py
+#       VBMAgeDataset.py
+#       preprocessing.py
+#       config.json
+#     checkpoints/
+#       autoencoder_age/          <- full training run outputs
+#       autoencoder_age_best/     <- best-config training run
+#     hparam_search/
+#       study.db
+#       best_config.json
+#       results.csv
+
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: project-data
+  name: vbm-ae-pvc
+  namespace: hdsi-schwartzman
 spec:
-  storageClassName: rook-ceph-block
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 100Gi
+      storage: 50Gi          # 750 subjects x ~1MB/slice + checkpoints + search db
+  storageClassName: rook-cephfs
