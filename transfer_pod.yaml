@@ -36,7 +36,7 @@ spec:
   containers:
   - name: transfer
     image: busybox
-    command: ["sh", "-c", "mkdir -p /data/vbm_data_sliced /data/code /data/checkpoints/autoencoder_age /data/hparam_search && sleep 3600"]
+    command: ["sh", "-c", "mkdir -p /data/vbm_data_sliced && sleep 3600"]
     resources:
       requests:
         memory: "512Mi"
