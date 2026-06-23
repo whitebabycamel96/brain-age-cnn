@@ -12,8 +12,22 @@ venv/
 # Jupyter
 .ipynb_checkpoints/
 
+checkpoints/
+
 # MacOS
 .DS_Store
 
 # Brain data
 *.npy
+
+# Participant data
+*.tsv
+
+# Logs
+*.logs
+
+# Metrics
+*.csv
+
+# Weights
+*.pt
